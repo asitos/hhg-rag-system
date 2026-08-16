@@ -1,1 +1,6 @@
 /implementation_plan.md
+/beginners_guide.md
+.env
+.venv/
+__pycache__/
+/reference_space

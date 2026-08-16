@@ -27,19 +27,28 @@ t_imports = time.perf_counter()
 model = SentenceTransformer("all-MiniLM-L6-v2")
 t_model_load = time.perf_counter()
 
-passages = [
-    "New Delhi is the capital of India and a major cultural hub.",
-    "The Taj Mahal is located in Agra, Uttar Pradesh, India.",
-    "Cricket is the most popular sport in India.",
-    "India gained independence on August 15, 1947.",
-    "The Ganges is a sacred river in Hinduism.",
-]
+print("Downloading MSMARCO dataset (first 500 passages)...")
+from datasets import load_dataset
+
+ds = load_dataset("ai4bharat/MSMARCO-XI", split="train", streaming=True)
+passages = []
+for item in ds:
+    if len(passages) >= 500:
+        break
+    for p in item.get("positive_passages", []):
+        passages.append(p["text"])
+    for p in item.get("negative_passages", []):
+        passages.append(p["text"])
+
+passages = list(set(passages))[:500]
+
+print(f"Loaded {len(passages)} real passages from MSMARCO.")
 passage_vectors = model.encode(passages)
 t_passage_encode = time.perf_counter()
 
 print("\n--- SERVER READY --- (Cold start complete)\n")
 
-query = "where is taj mahal?"
+query = "what does costco sell"
 t_query_start = time.perf_counter()
 
 query_vector = model.encode([query])[0]
@@ -62,7 +71,7 @@ prompt = f"Use only this context to answer:\nContext: {context}\n\nQuestion: {qu
     retry=retry_if_exception_type(ServerError),
 )
 def get_answer():
-    chat = client.chats.create(model='gemini-3.5-flash')
+    chat = client.chats.create(model="gemini-3.5-flash")
     return chat.send_message(prompt)
 
 
@@ -70,7 +79,7 @@ response = get_answer()
 print(f"Answer: {response.text.strip()}")
 t_generate = time.perf_counter()
 
-print("\n=== WHY IT SEEMS SLOW (TIMING REPORT) ===")
+print("\n=== TIMING REPORT ===")
 print(f"[Cold Start] Imports & Setup:      {(t_imports - t_start) * 1000:.0f} ms")
 print(f"[Cold Start] Load AI Model to RAM: {(t_model_load - t_imports) * 1000:.0f} ms")
 print(
@@ -87,7 +96,4 @@ print(f"[Hot Path]   Gemini API Network Call: {(t_generate - t_search) * 1000:.0
 print("-" * 42)
 print(
     f"Total Response Time (Hot Path):       {(t_generate - t_query_start) * 1000:.0f} ms"
-)
-print(
-    "Note: In the final app, 'Cold Start' only happens ONCE when the server boots up!"
 )

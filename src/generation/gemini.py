@@ -7,13 +7,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 class Generator:
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
-        self.model_id = "gemini-3.5-flash"
+        # Using 3.6-flash because 2.0-flash was deprecated and sunset by the API.
+        self.model_id = "gemini-3.6-flash"
         
         self.system_prompt = (
             "You are a strict retrieval-augmented generation assistant.\n"
-            "You must answer the user's question using ONLY the provided context.\n"
-            "If the context does not contain the answer, you must output EXACTLY: 'I don't have enough information in the retrieved context to answer that.'\n"
-            "If you use information from the context, cite the chunk ID at the end of the sentence like [p_123]."
+            "Answer ONLY from the supplied context.\n"
+            "Do not invent information.\n"
+            "If the context does not support the answer, explicitly refuse by returning EXACTLY: 'I don't have enough information in the retrieved context to answer that.'\n"
+            "Cite every factual claim using [chunk_id]."
         )
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=0.5, min=1, max=4))

@@ -13,7 +13,9 @@ class Reranker:
         # Cross encoder requires pairs: [[query, doc1], [query, doc2], ...]
         pairs = [[query, chunk["text"]] for chunk in chunks]
         
+        import numpy as np
         scores = self.model.predict(pairs)
+        scores = np.atleast_1d(scores)
         
         # Attach scores and sort
         for i, chunk in enumerate(chunks):

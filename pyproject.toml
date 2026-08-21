@@ -10,10 +10,13 @@ dependencies = [
     "pydantic-settings",
     "datasets",
     "sentence-transformers",
-    "faiss-cpu",
+    "qdrant-client",
     "google-genai",
     "httpx",
     "tenacity",
     "numpy",
-    "python-multipart"
+    "python-multipart",
+    "gradio",
+    "pytest",
+    "pytest-asyncio"
 ]

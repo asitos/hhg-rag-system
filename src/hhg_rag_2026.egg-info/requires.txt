@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+datasets
+sentence-transformers
+qdrant-client
+google-genai
+httpx
+tenacity
+numpy
+python-multipart
+gradio
+pytest
+pytest-asyncio

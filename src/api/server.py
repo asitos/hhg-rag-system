@@ -11,7 +11,13 @@ from src.stt.sarvam import SarvamSTT
 pipeline, _ = build_system()
 stt_client = SarvamSTT()
 
+from fastapi.responses import RedirectResponse
+
 app = FastAPI(title="HH Goa 2026 - Voice RAG")
+
+@app.get("/")
+async def root():
+    return RedirectResponse(url="/docs")
 
 class TextQueryRequest(BaseModel):
     query: str

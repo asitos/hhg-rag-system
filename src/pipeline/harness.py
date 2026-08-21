@@ -58,7 +58,9 @@ class RAGPipeline:
         
         # 4. Reranking
         t0 = time.perf_counter()
-        top_chunks = self.reranker.rerank(query, candidate_chunks, top_k=5)
+        # BYPASS MONOLINGUAL RERANKER: ms-marco-MiniLM is English-only and penalizes Indic matches.
+        # We rely purely on the strong multilingual alignments of e5-small.
+        top_chunks = candidate_chunks[:5]
         latencies["reranking"] = (time.perf_counter() - t0) * 1000
         
         if not top_chunks:

@@ -33,7 +33,7 @@ class SarvamSTT:
         with open(audio_file_path, "rb") as f:
             files = {"file": (audio_file_path, f, "audio/wav")}
             data = {
-                "model": "saaras:v3",
+                "model": "saaras:v2",
                 "language": language_code
             }
             headers = {"api-subscription-key": self.api_key}

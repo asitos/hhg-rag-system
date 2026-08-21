@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     ]
 
     # Retrieval configs
-    embedding_model_id: str = "intfloat/multilingual-e5-small"
+    embedding_model_id: str = "intfloat/multilingual-e5-base"
     cross_encoder_id: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     
     # Chunking configs

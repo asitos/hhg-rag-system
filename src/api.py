@@ -1,38 +1,38 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, UploadFile, File, HTTPException
 import tempfile
 import os
 
-from src.pipeline.harness import PipelineResponse
-from src.benchmark.run_benchmarks import build_system
+from src.pipeline.harness import RAGPipeline
+from bench.bench import build_system
 from src.stt.sarvam import SarvamSTT
+from src.models import PipelineInput, PipelineOutput
 
 # Initialize system globally
-pipeline, _ = build_system()
-stt_client = SarvamSTT()
+try:
+    pipeline, _ = build_system()
+except Exception as e:
+    pipeline = None
+    print(f"Warning: Could not initialize pipeline. Ensure index exists. Error: {e}")
 
-from fastapi.responses import RedirectResponse
+stt_client = SarvamSTT()
 
 app = FastAPI(title="HH Goa 2026 - Voice RAG")
 
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/docs")
-
-class TextQueryRequest(BaseModel):
-    query: str
-
-@app.post("/api/query/text", response_model=PipelineResponse)
-async def query_text(request: TextQueryRequest):
+@app.post("/api/query/text", response_model=PipelineOutput)
+async def query_text(request: PipelineInput):
+    if not pipeline:
+        raise HTTPException(status_code=503, detail="Pipeline not initialized")
     try:
-        response = pipeline.execute(request.query)
+        response = pipeline.execute(request)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/query/voice")
+@app.post("/api/query/voice", response_model=PipelineOutput)
 async def query_voice(audio_file: UploadFile = File(...)):
-    """Accepts an audio file, runs STT, then processes via RAG pipeline."""
+    if not pipeline:
+        raise HTTPException(status_code=503, detail="Pipeline not initialized")
+        
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         content = await audio_file.read()
         tmp.write(content)
@@ -44,10 +44,12 @@ async def query_voice(audio_file: UploadFile = File(...)):
         if not transcript:
             raise HTTPException(status_code=400, detail="Could not transcribe audio")
             
-        response = pipeline.execute(transcript)
+        p_input = PipelineInput(query=transcript)
+        response = pipeline.execute(p_input)
+        
         # Inject STT latency into response
-        response.stage_latencies_ms["stt"] = stt_latency
-        response.total_latency_ms += stt_latency
+        response.latency["stt_ms"] = stt_latency
+        response.latency["total_ms"] = response.latency["post_stt_ms"] + stt_latency
         
         return response
         

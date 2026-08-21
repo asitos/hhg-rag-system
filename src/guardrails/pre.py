@@ -1,21 +1,21 @@
-from enum import Enum
 import re
-
-class GuardrailStatus(str, Enum):
-    PASS = "pass"
-    FAIL_SAFETY = "fail_safety"
-    FAIL_OFFTOPIC = "fail_offtopic"
-    FAIL_GROUNDING = "fail_grounding"
-    FAIL_REFUSAL = "fail_refusal"
+from src.models import GuardrailStatus
+from sentence_transformers import SentenceTransformer
+import numpy as np
 
 class PreGuardrail:
     """
     Executes before retrieval to block unsafe or completely out-of-domain queries.
     """
     def __init__(self):
-        # A fast regex filter for obvious jailbreaks or harmful content
         self.unsafe_patterns = re.compile(
             r'(ignore all previous instructions|jailbreak|system prompt|hack|bypass)', 
+            re.IGNORECASE
+        )
+        
+        # Domain relevance heuristic
+        self.offtopic_patterns = re.compile(
+            r'(recipe|bake|cake|cookie|weather|movie|actor|sports|football)', 
             re.IGNORECASE
         )
         
@@ -25,5 +25,8 @@ class PreGuardrail:
             
         if self.unsafe_patterns.search(query):
             return GuardrailStatus.FAIL_SAFETY
+            
+        if self.offtopic_patterns.search(query):
+            return GuardrailStatus.FAIL_OFFTOPIC
             
         return GuardrailStatus.PASS

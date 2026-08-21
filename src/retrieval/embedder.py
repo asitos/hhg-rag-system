@@ -3,10 +3,10 @@ from typing import List
 import numpy as np
 
 class Embedder:
-    def __init__(self, model_id: str = "intfloat/multilingual-e5-small"):
+    def __init__(self, model_id: str = "intfloat/multilingual-e5-base"):
         """
-        Loads the SentenceTransformer model.
-        multilingual-e5 requires 'query: ' and 'passage: ' prefixes for optimal performance.
+        Loads the multilingual-e5-base model.
+        e5 requires specific prefixes for queries and passages.
         """
         self.model = SentenceTransformer(model_id)
         

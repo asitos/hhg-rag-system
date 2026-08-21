@@ -1,6 +1,6 @@
 import re
 from typing import List, Dict, Any
-from .pre import GuardrailStatus
+from src.models import GuardrailStatus
 
 class PostGuardrail:
     """

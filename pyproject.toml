@@ -15,4 +15,5 @@ dependencies = [
     "httpx",
     "tenacity",
     "numpy",
+    "python-multipart"
 ]

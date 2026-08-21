@@ -17,24 +17,13 @@ class FixedSizeChunker(Chunker):
         start = 0
         text_len = len(text)
         
-        while start < text_len:
-            end = min(start + char_size, text_len)
-            chunk_text = text[start:end]
-            
-            # Avoid tiny trailing chunks
-            if len(chunk_text) < 20 and chunks:
-                break
-                
+        for i in range(0, len(text), self.chunk_size - self.chunk_overlap):
+            chunk_text = text[i:i + self.chunk_size]
             chunks.append(Chunk(
-                chunk_id=str(uuid.uuid4()),
+                chunk_id=f"{passage_id}_fixed_{i}",
                 text=chunk_text,
                 strategy="fixed",
                 metadata={"passage_id": passage_id, "language": language}
             ))
-            
-            if end == text_len:
-                break
-                
-            start += char_size - char_overlap
             
         return chunks

@@ -18,14 +18,14 @@ class SentenceChunker(Chunker):
         current_chunk = []
         current_len = 0
         
-        for sentence in sentences:
+        for i, sentence in enumerate(sentences):
             sentence = sentence.strip()
             if not sentence:
                 continue
                 
             if current_len + len(sentence) > self.max_chars_per_chunk and current_chunk:
                 chunks.append(Chunk(
-                    chunk_id=str(uuid.uuid4()),
+                    chunk_id=f"{passage_id}_sent_{len(chunks)}",
                     text=" ".join(current_chunk),
                     strategy="sentence",
                     metadata={"passage_id": passage_id, "language": language}
@@ -38,7 +38,7 @@ class SentenceChunker(Chunker):
                 
         if current_chunk:
             chunks.append(Chunk(
-                chunk_id=str(uuid.uuid4()),
+                chunk_id=f"{passage_id}_sent_{len(chunks)}",
                 text=" ".join(current_chunk),
                 strategy="sentence",
                 metadata={"passage_id": passage_id, "language": language}

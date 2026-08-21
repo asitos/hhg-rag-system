@@ -1,58 +1,73 @@
-import faiss
-import numpy as np
-from typing import List, Dict, Any
+from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
+from typing import List, Dict, Any, Optional
+import uuid
 
 class VectorStore:
-    def __init__(self, dimension: int = 384):
+    def __init__(self, dimension: int = 768):
         """
-        Initializes an in-memory FAISS index (HNSW for speed).
-        Dimension 384 is standard for e5-small.
+        Initializes an in-memory Qdrant index.
+        Dimension 768 is standard for e5-base.
         """
-        # HNSW provides extreme search speeds at the cost of slightly slower build time
-        self.index = faiss.IndexHNSWFlat(dimension, 32)
-        self.index.hnsw.efSearch = 64
-        self.metadata: Dict[int, Dict[str, Any]] = {}
-        self._current_id = 0
+        self.client = QdrantClient(":memory:")
+        self.collection_name = "msmarco"
+        self.client.create_collection(
+            collection_name=self.collection_name,
+            vectors_config=VectorParams(size=dimension, distance=Distance.COSINE)
+        )
 
-    def add_vectors(self, vectors: np.ndarray, metadatas: List[Dict[str, Any]]):
-        """Adds normalized vectors to the FAISS index with associated metadata."""
+    def add_vectors(self, vectors: List[List[float]], metadatas: List[Dict[str, Any]]):
+        """Adds normalized vectors to Qdrant with associated metadata."""
         if len(vectors) != len(metadatas):
             raise ValueError("Mismatched vectors and metadata lengths")
             
-        # FAISS requires float32
-        vectors = np.array(vectors, dtype=np.float32)
-        
-        self.index.add(vectors)
-        
-        for meta in metadatas:
-            self.metadata[self._current_id] = meta
-            self._current_id += 1
+        points = []
+        for vec, meta in zip(vectors, metadatas):
+            points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=vec,
+                    payload=meta
+                )
+            )
+            
+        # Batch upload
+        batch_size = 100
+        for i in range(0, len(points), batch_size):
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=points[i:i+batch_size]
+            )
 
-    def search(self, query_vector: np.ndarray, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search(
+        self, 
+        query_vector: List[float], 
+        top_k: int = 5, 
+        strategy: Optional[str] = None,
+        language: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """
-        Searches the index for the closest vectors (cosine similarity via inner product 
-        since vectors are normalized, but HNSWFlat uses L2 by default. Since vectors 
-        are normalized, L2 distance ordering is identical to inner product ordering).
+        Searches the index for the closest vectors, optionally filtering by strategy and language.
         """
-        # Ensure correct shape and type
-        if len(query_vector.shape) == 1:
-            query_vector = np.expand_dims(query_vector, axis=0)
-        query_vector = np.array(query_vector, dtype=np.float32)
-        
-        distances, indices = self.index.search(query_vector, top_k)
+        must_conditions = []
+        if strategy:
+            must_conditions.append(FieldCondition(key="strategy", match=MatchValue(value=strategy)))
+        if language:
+            must_conditions.append(FieldCondition(key="language", match=MatchValue(value=language)))
+            
+        query_filter = Filter(must=must_conditions) if must_conditions else None
+
+        search_result = self.client.query_points(
+            collection_name=self.collection_name,
+            query=query_vector,
+            query_filter=query_filter,
+            limit=top_k
+        ).points
         
         results = []
-        for i, idx in enumerate(indices[0]):
-            if idx == -1 or idx not in self.metadata:
-                continue
-            
-            # Convert L2 distance to something resembling a similarity score
-            # For L2 squared on normalized vectors: L2^2 = 2 - 2 * cosine_sim
-            # cosine_sim = 1 - (L2^2 / 2)
-            cosine_sim = 1.0 - (distances[0][i] / 2.0)
-            
-            meta = self.metadata[idx].copy()
-            meta["score"] = float(cosine_sim)
+        for hit in search_result:
+            meta = hit.payload.copy()
+            meta["score"] = float(hit.score)
             results.append(meta)
             
         return results

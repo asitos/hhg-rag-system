@@ -1,0 +1,26 @@
+[
+  {
+    "id": "demo_001",
+    "language": "en",
+    "text": "A corporation is a legal entity that is separate and distinct from its owners. Under the law, corporations possess many of the same rights and responsibilities as individuals.",
+    "strategy": "semantic"
+  },
+  {
+    "id": "demo_002",
+    "language": "en",
+    "text": "New Delhi is the capital of India, a vibrant city known for its historical monuments and bustling markets.",
+    "strategy": "sentence"
+  },
+  {
+    "id": "demo_003",
+    "language": "hi",
+    "text": "भारत की राजधानी नई दिल्ली है, जो अपने ऐतिहासिक स्मारकों के लिए प्रसिद्ध है।",
+    "strategy": "semantic"
+  },
+  {
+    "id": "demo_004",
+    "language": "en",
+    "text": "Mutual funds pool money from multiple investors to purchase a diversified portfolio of stocks, bonds, or other securities.",
+    "strategy": "fixed"
+  }
+]

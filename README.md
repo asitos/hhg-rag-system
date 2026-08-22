@@ -80,3 +80,15 @@ STT latency has been heavily optimized:
 
 - Heavy embeddings or huge datasets are not committed. Ensure you run the ingestion pipeline (`tests/test_harness.py` or similar scripts) to populate the local Qdrant database `data/qdrant_db` before deploying, or use a managed Qdrant cloud instance.
 - The Gemini API free tier restricts traffic to 20 requests per day.
+
+
+## GitHub Pages Demo
+
+The GitHub Pages deployment is a static frontend demonstration.
+
+Because GitHub Pages does not provide a Python runtime, the deployed demo uses deterministic client-side mock STT, retrieval, generation, and guardrail behavior.
+
+The production pipeline remains implemented in the Python backend and can be deployed separately to a backend-capable platform (like Hugging Face Spaces).
+
+Live Demo:
+https://asitos.github.io/hhg/

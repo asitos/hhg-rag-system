@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const API_BASE = window.APP_CONFIG?.API_BASE_URL || 'http://localhost:8000';
+    // Determine if we are running locally with a backend, or strictly as a static frontend
+    const API_BASE = window.APP_CONFIG?.API_BASE_URL !== undefined ? window.APP_CONFIG.API_BASE_URL : "";
+    let isDemoMode = false;
     
     // UI Elements
     const themeBtn = document.getElementById('theme-btn');
@@ -23,6 +25,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const outGuardrail = document.getElementById('guardrail-out');
     const outSttLat = document.getElementById('stt-lat-out');
     const outTotalLat = document.getElementById('total-lat-out');
+    const demoBanner = document.getElementById('demo-banner');
+    
+    // Pipeline UI
+    const pipelineContainer = document.createElement('div');
+    pipelineContainer.className = 'pipeline-viz hidden';
+    pipelineContainer.id = 'pipeline-viz';
+    pipelineContainer.innerHTML = `
+        <div class="pipeline-stage" id="stage-stt">● STT</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-stage" id="stage-retrieval">● RETRIEVAL</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-stage" id="stage-rerank">● RERANK</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-stage" id="stage-generation">● GENERATION</div>
+        <div class="pipeline-arrow">→</div>
+        <div class="pipeline-stage" id="stage-guardrails">● GUARDRAILS</div>
+    `;
+    document.querySelector('.output-deck').insertBefore(pipelineContainer, loadingState);
 
     // Theme Toggle
     themeBtn.addEventListener('click', () => {
@@ -41,21 +61,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Health Check
+    // Health Check & Demo Mode Fallback
     async function checkHealth() {
+        if (!API_BASE && window.location.protocol.startsWith('http') && window.location.port !== "8000") {
+            // Force demo mode for GitHub Pages or static host
+            enableDemoMode();
+            return;
+        }
         try {
             const res = await fetch(`${API_BASE}/health`);
             if (res.ok) {
+                const data = await res.json();
                 outHealth.textContent = "Online";
                 outHealth.style.color = "var(--success)";
+                if (data.mode === "mock") {
+                    demoBanner.classList.remove("hidden");
+                }
             } else {
                 throw new Error("Bad status");
             }
         } catch (e) {
-            outHealth.textContent = "Unavailable";
-            outHealth.style.color = "var(--error)";
+            enableDemoMode();
         }
     }
+    
+    function enableDemoMode() {
+        isDemoMode = true;
+        outHealth.textContent = "Static Demo";
+        outHealth.style.color = "var(--gold)";
+        demoBanner.classList.remove("hidden");
+        demoBanner.textContent = "STATIC DEMO MODE: Backend APIs are disabled. Running purely in browser.";
+    }
+    
     checkHealth();
 
     // UI States
@@ -63,10 +100,20 @@ document.addEventListener('DOMContentLoaded', () => {
         resultContainer.classList.add('hidden');
         errorState.classList.add('hidden');
         loadingState.classList.remove('hidden');
+        pipelineContainer.classList.remove('hidden');
+        
+        document.querySelectorAll('.pipeline-stage').forEach(el => {
+            el.className = 'pipeline-stage';
+        });
         
         outSttLat.textContent = "0.00s";
         outTotalLat.textContent = "0.00s";
         outGuardrail.textContent = "-";
+    }
+
+    function setStage(stageId, status = 'active') {
+        const el = document.getElementById(`stage-${stageId}`);
+        if (el) el.className = `pipeline-stage ${status}`;
     }
 
     function showError(msg) {
@@ -91,17 +138,103 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (data.latency) {
-            outSttLat.textContent = (data.latency.stt_ms / 1000).toFixed(2) + "s";
-            outTotalLat.textContent = (data.latency.total_ms / 1000).toFixed(2) + "s";
+            const prefix = isDemoMode ? "(UI sim) " : "";
+            outSttLat.textContent = prefix + (data.latency.stt_ms / 1000).toFixed(2) + "s";
+            outTotalLat.textContent = prefix + (data.latency.total_ms / 1000).toFixed(2) + "s";
         }
         
         outGuardrail.textContent = data.guardrail || "PASS";
         if (data.guardrail !== "PASS") {
             outGuardrail.style.color = "var(--error)";
             outAnswer.textContent += `\n\nGuardrail reason: ${data.guardrail_reason || "Unknown"}`;
+            setStage('guardrails', 'error');
         } else {
             outGuardrail.style.color = "var(--success)";
+            setStage('guardrails', 'success');
         }
+    }
+
+    // --- STATIC DEMO PIPELINE ---
+    async function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+    
+    async function runStaticDemoPipeline(query, isVoice = false) {
+        let sttMs = 0;
+        
+        if (isVoice) {
+            setStage('stt', 'active');
+            await sleep(300);
+            sttMs = 300;
+            setStage('stt', 'success');
+            // Mock STT logic if no query provided
+            if (!query) query = "What is a corporation?";
+        }
+        
+        let lowerQuery = query.toLowerCase();
+        
+        // Pre-guardrail
+        if (lowerQuery.includes("weather")) {
+            setStage('guardrails', 'error');
+            return {
+                transcript: query,
+                answer: "OFF-TOPIC: I can only answer questions supported by the indexed dataset.",
+                sources: [],
+                guardrail: "FAIL_OFFTOPIC",
+                latency: { stt_ms: sttMs, total_ms: sttMs + 50 }
+            };
+        }
+        
+        setStage('retrieval', 'active');
+        await sleep(100);
+        let sources = [];
+        try {
+            const res = await fetch('assets/mock-data.json');
+            const data = await res.json();
+            
+            // Simple mock semantic search
+            if (lowerQuery.includes("corporation")) {
+                sources.push(data.find(d => d.id === "demo_001"));
+            } else if (lowerQuery.includes("india") || lowerQuery.includes("capital")) {
+                sources.push(data.find(d => d.id === "demo_002"));
+            } else if (lowerQuery.includes("भारत") || lowerQuery.includes("राजधानी")) {
+                sources.push(data.find(d => d.id === "demo_003"));
+            } else if (lowerQuery.includes("mutual fund")) {
+                sources.push(data.find(d => d.id === "demo_004"));
+            }
+        } catch (e) {
+            console.error("Failed to load mock data:", e);
+        }
+        setStage('retrieval', 'success');
+        
+        setStage('rerank', 'active');
+        await sleep(50);
+        sources = sources.filter(s => s).map(s => ({ chunk_id: s.id, text: s.text, score: 0.94 }));
+        setStage('rerank', 'success');
+        
+        setStage('generation', 'active');
+        await sleep(500);
+        setStage('generation', 'success');
+        
+        setStage('guardrails', 'active');
+        await sleep(50);
+        
+        if (sources.length === 0) {
+            return {
+                transcript: query,
+                answer: "I cannot answer this from the available context.",
+                sources: [],
+                guardrail: "FAIL_GROUNDING",
+                guardrail_reason: "No context",
+                latency: { stt_ms: sttMs, total_ms: sttMs + 100 + 50 + 500 + 50 }
+            };
+        }
+        
+        return {
+            transcript: query,
+            answer: `Based on the retrieved context:\n\n[${sources[0].chunk_id}] ${sources[0].text}\n\nThis answer is generated entirely in the browser for the GitHub Pages demo.`,
+            sources: sources,
+            guardrail: "PASS",
+            latency: { stt_ms: sttMs, total_ms: sttMs + 100 + 50 + 500 + 50 }
+        };
     }
 
     // Text Submission
@@ -110,6 +243,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!query) return;
         
         showLoading();
+        if (isDemoMode) {
+            const data = await runStaticDemoPipeline(query, false);
+            showResult(data);
+            return;
+        }
+        
         try {
             const formData = new FormData();
             formData.append('query', query);
@@ -146,10 +285,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 mediaRecorder.addEventListener('stop', async () => {
                     const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    // Stop tracks to release microphone
                     stream.getTracks().forEach(track => track.stop());
                     
                     showLoading();
+                    
+                    if (isDemoMode) {
+                        // Pass an empty string so the demo pipeline picks a default mock query
+                        const data = await runStaticDemoPipeline("", true);
+                        showResult(data);
+                        return;
+                    }
+                    
                     try {
                         const formData = new FormData();
                         formData.append('audio', audioBlob, 'recording.webm');

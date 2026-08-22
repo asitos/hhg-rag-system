@@ -168,3 +168,71 @@ body.dark .spinner { border-color: rgba(255,255,255,0.1); border-top-color: var(
     .workbench { gap: 16px; }
     .panel { padding: 18px; }
 }
+
+/* Better Dark Mode Contrast */
+body.dark {
+    --ink: #e0e0e0;
+    --panel: #1e1e1e;
+    --panel-light: #2d2d2d;
+    --line: #444;
+    --gold: #121212;
+    --champagne: #121212;
+    --paper: #e0e0e0;
+    --input-bg: #2d2d2d;
+    --input-text: #ffffff;
+    --button-shadow: #000000;
+    --text-muted: #aaaaaa;
+    --btn-primary: #e8c875;
+    --btn-primary-text: #121212;
+    --error: #ff6b6b;
+    --success: #69f0ae;
+}
+
+/* Pipeline Visualization Styles */
+.pipeline-viz {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0;
+    padding: 10px;
+    background: var(--panel-light);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    overflow-x: auto;
+}
+
+.pipeline-stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: var(--text-muted);
+    transition: all 0.3s;
+    opacity: 0.5;
+}
+
+.pipeline-stage.active {
+    color: var(--ink);
+    opacity: 1;
+    font-weight: bold;
+}
+
+.pipeline-stage.success {
+    color: var(--success);
+    opacity: 1;
+}
+
+.pipeline-stage.error {
+    color: var(--error);
+    opacity: 1;
+}
+
+.pipeline-arrow {
+    color: var(--line);
+    margin: 0 5px;
+}
+::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+}

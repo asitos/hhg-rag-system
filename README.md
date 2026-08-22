@@ -92,3 +92,25 @@ The production pipeline remains implemented in the Python backend and can be dep
 
 Live Demo:
 https://asitos.github.io/hhg/
+
+
+## Demo
+
+Run the video-ready interactive demo (runs the real local RAG pipeline with mock deterministic APIs for offline recording):
+
+```bash
+./scripts/run_demo.sh
+```
+
+Then open the local Gradio URL (typically `http://localhost:7860`).
+
+Recommended demo flow:
+1. English voice query (or type a query)
+2. Show transcript
+3. Show retrieval
+4. Show reranking
+5. Show grounded answer
+6. Show sources
+7. Show latency
+8. Demonstrate Hindi query using the Demo Scenario dropdown
+9. Demonstrate off-topic guardrail using the Demo Scenario dropdown

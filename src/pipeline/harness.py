@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class RAGPipeline:
     def __init__(self, vector_store: VectorStore):
-        if settings.app_mode == "mock":
+        if settings.app_mode in ["mock", "demo"]:
             self.stt = MockSTT()
             self.generator = MockGenerator(settings.gemini_api_key)
         else:

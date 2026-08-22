@@ -12,20 +12,14 @@ class MockSTT:
         self.index = 0
 
     async def transcribe(self, audio_bytes: bytes, language="unknown") -> str:
-        if settings.mock_failure_mode == "stt":
-            raise Exception("Simulated STT failure")
-            
-        if settings.mock_failure_mode == "timeout":
-            await asyncio.sleep(10)
-            raise TimeoutError("Simulated timeout")
-            
-        if settings.mock_latency:
-            await asyncio.sleep(settings.mock_stt_latency_ms / 1000.0)
-            
-        # Very simple deterministic rotation
-        query = self.queries[self.index % len(self.queries)]
-        self.index += 1
-        return query
+        if settings.demo_scenario == "off_topic":
+            return "What is the weather today?"
+        elif settings.demo_scenario == "no_context":
+            return "Tell me about quantum physics."
+        elif settings.demo_scenario == "hindi":
+            return "भारत की राजधानी क्या है?"
+        else:
+            return "What is a corporation?"
 
     async def close(self):
         pass

@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 class Settings(BaseSettings):
-    app_mode: str = "mock"
-    mock_failure_mode: str = "none"
+    app_mode: str = "demo"
+    demo_scenario: str = "english"
     mock_latency: bool = False
     mock_stt_latency_ms: int = 100
     mock_generation_latency_ms: int = 300

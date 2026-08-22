@@ -8,7 +8,7 @@ from src.config import settings
 
 # Ensure we test in mock mode
 settings.app_mode = "mock"
-settings.mock_failure_mode = "none"
+settings.demo_scenario = "english"
 
 @pytest.fixture(scope="module")
 def store():
@@ -61,9 +61,9 @@ async def test_harness_run_audio(pipeline):
 @pytest.mark.asyncio
 async def test_mock_failures(pipeline):
     # Test generation failure mode
-    settings.mock_failure_mode = "invalid_citation"
+    settings.demo_scenario = "grounding_failure"
     res = await pipeline.execute(PipelineInput(query="What is a corporation?"))
     # The post guardrail should catch the invalid citation
     assert res.guardrail == GuardrailStatus.FAIL_GROUNDING
     
-    settings.mock_failure_mode = "none"
+    settings.demo_scenario = "english"

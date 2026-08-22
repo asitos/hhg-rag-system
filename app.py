@@ -1,5 +1,8 @@
-import gradio as gr
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
+import gradio as gr
 
 from bench.bench import build_system
 from src.stt.sarvam import SarvamSTT
@@ -55,7 +58,7 @@ def process_text(text):
 ui_css = """
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
-:root {
+:root, .light {
     --ink: #16130f;
     --panel: #e8c875;
     --panel-light: #f2d994;
@@ -63,6 +66,28 @@ ui_css = """
     --gold: #d6a84f;
     --champagne: #f3d58a;
     --paper: #17130d;
+    --input-bg: #f8e9b8;
+    --input-text: #17130d;
+    --button-shadow: #6b5128;
+    --text-muted: #493618;
+    --btn-primary: var(--ink);
+    --btn-primary-text: var(--champagne);
+}
+
+.dark {
+    --ink: #f8e9b8;
+    --panel: #2a2215;
+    --panel-light: #1a150c;
+    --line: #6b5128;
+    --gold: #110d08;
+    --champagne: #16130f;
+    --paper: #f8e9b8;
+    --input-bg: #221c12;
+    --input-text: #f8e9b8;
+    --button-shadow: #000000;
+    --text-muted: #d6a84f;
+    --btn-primary: var(--gold);
+    --btn-primary-text: var(--ink);
 }
 
 body, .gradio-container {
@@ -78,6 +103,9 @@ body, .gradio-container {
     background-image: linear-gradient(rgba(22, 19, 15, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 19, 15, .07) 1px, transparent 1px) !important;
     background-size: 34px 34px !important;
 }
+.dark .gradio-container {
+    background-image: linear-gradient(rgba(248, 233, 184, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(248, 233, 184, .07) 1px, transparent 1px) !important;
+}
 
 .console {
     perspective: 1200px;
@@ -92,7 +120,7 @@ body, .gradio-container {
     border: 2px solid var(--ink);
     border-left: 8px solid var(--ink);
     background: var(--panel-light);
-    box-shadow: 0 8px 18px rgba(22, 19, 15, .16);
+    box-shadow: 0 8px 18px rgba(0,0,0, .16);
 }
 
 .masthead:after {
@@ -121,7 +149,7 @@ body, .gradio-container {
     letter-spacing: 0;
 }
 
-.masthead p { max-width: 580px; margin: 0; color: #493618; font-size: 15px; }
+.masthead p { max-width: 580px; margin: 0; color: var(--text-muted); font-size: 15px; }
 .workbench { gap: 24px !important; margin-top: 36px; align-items: stretch !important; }
 .input-deck, .output-deck { transform-style: preserve-3d; }
 .panel {
@@ -130,30 +158,30 @@ body, .gradio-container {
     padding: 24px !important;
     border: 2px solid var(--ink) !important;
     background: var(--panel-light) !important;
-    box-shadow: 0 8px 18px rgba(22, 19, 15, .14);
+    box-shadow: 0 8px 18px rgba(0,0,0, .14);
 }
 .panel:before {
     content: '';
     position: absolute;
     inset: 8px;
-    border: 1px solid rgba(22, 19, 15, .16);
+    border: 1px solid rgba(128, 128, 128, .16);
     pointer-events: none;
 }
 .section-label { color: var(--ink); font: 500 11px 'DM Mono', monospace; letter-spacing: 2px; text-transform: uppercase; }
 .panel h2 { margin: 7px 0 14px; color: var(--ink); font-size: 22px; letter-spacing: 0; }
 .tabs { border-bottom: 1px solid var(--line) !important; }
-.tabs button { color: #6b5128 !important; font: 500 12px 'DM Mono', monospace !important; }
+.tabs button { color: var(--text-muted) !important; font: 500 12px 'DM Mono', monospace !important; }
 .tabs button.selected { color: var(--ink) !important; border-color: var(--ink) !important; }
-textarea, input, .audio-container { border-color: var(--ink) !important; background: #f8e9b8 !important; color: var(--paper) !important; border-radius: 2px !important; }
-label span { color: #493618 !important; font: 500 11px 'DM Mono', monospace !important; text-transform: uppercase; }
-button.primary { border-radius: 2px !important; background: var(--ink) !important; color: var(--champagne) !important; font-weight: 700 !important; box-shadow: 5px 5px 0 #6b5128; }
-button.primary:hover { box-shadow: 7px 7px 0 #6b5128; }
+textarea, input, .audio-container { border-color: var(--ink) !important; background: var(--input-bg) !important; color: var(--input-text) !important; border-radius: 2px !important; }
+label span { color: var(--text-muted) !important; font: 500 11px 'DM Mono', monospace !important; text-transform: uppercase; }
+button.primary { border-radius: 2px !important; background: var(--btn-primary) !important; color: var(--btn-primary-text) !important; font-weight: 700 !important; box-shadow: 5px 5px 0 var(--button-shadow) !important; border: 1px solid var(--ink) !important;}
+button.primary:hover { box-shadow: 7px 7px 0 var(--button-shadow) !important; }
 .telemetry { margin-top: 24px; gap: 24px !important; }
 .metric { border-top: 2px solid var(--ink); padding-top: 12px !important; background: transparent !important; }
-.metric input { border: 0 !important; padding-left: 0 !important; font: 500 22px 'DM Mono', monospace !important; }
+.metric input { border: 0 !important; padding-left: 0 !important; font: 500 22px 'DM Mono', monospace !important; background: transparent !important; }
 @media (max-width: 800px) {
     .gradio-container { padding: 12px !important; }
-    .masthead { padding: 24px; min-height: 190px; box-shadow: 0 6px 14px rgba(22, 19, 15, .14); }
+    .masthead { padding: 24px; min-height: 190px; box-shadow: 0 6px 14px rgba(0,0,0, .14); }
     .masthead:after { right: 16px; top: 16px; }
     .workbench { gap: 16px !important; margin-top: 24px; }
     .panel { padding: 18px !important; }

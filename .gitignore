@@ -5,3 +5,5 @@
 __pycache__/
 /reference_space
 /reference_space
+.env*
+!.env.example

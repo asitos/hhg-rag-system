@@ -1,276 +1,282 @@
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional, List, Dict
+import time
 import os
-from dotenv import load_dotenv
-load_dotenv()
+import io
+from pydub import AudioSegment
 
-import gradio as gr
-
-from bench.bench import build_system
+from src.pipeline.harness import RAGPipeline, PipelineInput
+from src.retrieval.vector_store import VectorStore
 from src.stt.sarvam import SarvamSTT
-from src.models import PipelineInput
+from src.stt.sarvam_stream import SarvamStreamSession
+from src.config import settings
 
-# Initialize system globally
-try:
-    pipeline, _ = build_system()
-except Exception as e:
-    pipeline = None
-    print(f"Warning: Could not initialize pipeline. Ensure index exists. Error: {e}")
+from contextlib import asynccontextmanager
 
-async def process_audio(audio_path):
-    if not pipeline:
-        return "Pipeline not initialized.", "", 0.0, 0.0
-    if not audio_path:
-        return "No audio provided.", "", 0.0, 0.0
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await rest_stt.close()
+
+app = FastAPI(title="HH Goa 2026 Voice RAG API", lifespan=lifespan)
+
+# Setup CORS
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8000",
+]
+if settings.frontend_origin:
+    origins.append(settings.frontend_origin)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+vector_store = VectorStore()
+pipeline = RAGPipeline(vector_store)
+rest_stt = SarvamSTT()
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: models are already initialized via constructors
+    yield
+    # Shutdown: clean up HTTP clients
+    await rest_stt.close()
+
+app.router.lifespan_context = lifespan
+
+class LatencyMetrics(BaseModel):
+    stt_ms: float = 0.0
+    embedding_ms: float = 0.0
+    retrieval_ms: float = 0.0
+    rerank_ms: float = 0.0
+    generation_ms: float = 0.0
+    total_ms: float = 0.0
+
+class VoiceResponse(BaseModel):
+    answer: str
+    transcript: str
+    sources: List[Dict[str, str]]
+    guardrail: str
+    guardrail_reason: Optional[str] = None
+    latency: LatencyMetrics
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+@app.get("/api/v1/health")
+async def api_health_check():
+    return {"status": "ok"}
+
+@app.post("/api/v1/text", response_model=VoiceResponse)
+async def process_text_query(query: str = Form(...)):
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
         
     try:
-        with open(audio_path, "rb") as f:
-            audio_bytes = f.read()
+        p_input = PipelineInput(query=query)
+        response = await pipeline.execute(p_input)
+        
+        sources = [{"chunk_id": s.chunk_id, "text": s.text, "score": str(s.score)} for s in response.sources]
+        
+        lat = LatencyMetrics(
+            stt_ms=0.0,
+            embedding_ms=response.latency.get("embedding_ms", 0),
+            retrieval_ms=response.latency.get("retrieval_ms", 0),
+            rerank_ms=response.latency.get("reranking_ms", 0),
+            generation_ms=response.latency.get("generation_ms", 0),
+            total_ms=response.latency.get("post_stt_total_ms", 0)
+        )
+        
+        return VoiceResponse(
+            answer=response.answer,
+            transcript=query,
+            sources=sources,
+            guardrail=response.guardrail.value,
+            guardrail_reason=response.guardrail_reason,
+            latency=lat
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Text query error: {str(e)}", exc_info=True)
+        error_str = str(e)
+        if hasattr(e, 'last_attempt') and e.last_attempt is not None:
+            try:
+                e.last_attempt.result()
+            except Exception as inner_e:
+                error_str = str(inner_e)
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "ClientError" in str(e):
+            raise HTTPException(status_code=429, detail="Gemini API daily quota (20 requests/day) exceeded. Ensure you have enabled GCP billing on your AI Studio project.")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.post("/api/v1/voice", response_model=VoiceResponse)
+async def process_voice_query(audio: UploadFile = File(...)):
+    t0 = time.perf_counter()
+    audio_bytes = await audio.read()
+    
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+        
+    try:
+        # Convert incoming WebM/OGG to WAV for Sarvam using pydub
+        import tempfile
+        from pydub import AudioSegment
+        import io
+        
+        audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        wav_io = io.BytesIO()
+        audio_segment.export(wav_io, format="wav")
+        wav_bytes = wav_io.getvalue()
+
+        # Transcribe
+        transcript = await rest_stt.transcribe(wav_bytes)
+        
+        stt_ms = (time.perf_counter() - t0) * 1000
+        
+        if not transcript.strip():
+            # If no transcript, return early
+            lat = LatencyMetrics(stt_ms=stt_ms, total_ms=stt_ms)
+            return VoiceResponse(
+                answer="Could not understand audio.",
+                transcript="",
+                sources=[],
+                guardrail="PASS",
+                latency=lat
+            )
             
-        response = await pipeline.run(audio_bytes)
-        
-        sources = "\n".join([f"[{s.chunk_id}] {s.text}" for s in response.sources])
-        total_lat = response.latency.get("total_ms", 0) / 1000
-        stt_latency = response.latency.get("stt_ms", 0) / 1000
-        return response.answer, sources, total_lat, stt_latency
-    except Exception as e:
-        import logging
-        logging.error(f"Audio processing error: {str(e)}", exc_info=True)
-        return f"Processing error: {str(e)[:100]}", "", 0.0, 0.0
-
-def process_text(text):
-    if not pipeline:
-        return "Pipeline not initialized.", "", 0.0, 0.0
-    if not text:
-        return "No text provided.", "", 0.0, 0.0
-        
-    try:
-        p_input = PipelineInput(query=text)
-        response = pipeline.execute(p_input)
-        
-        sources = "\n".join([f"[{s.chunk_id}] {s.text}" for s in response.sources])
-        total_lat = response.latency.get("post_stt_ms", 0) / 1000
-        return response.answer, sources, total_lat, 0.0
-    except Exception as e:
-        return f"Error: {str(e)}", "", 0.0, 0.0
-
-
-from src.stt.sarvam_stream import get_session, cleanup_session
-
-async def handle_stream(session_id, audio_chunk):
-    if audio_chunk is None:
-        return session_id, ""
-    try:
-        session = await get_session(session_id)
-        await session.send_chunk(audio_chunk)
-        return session.session_id, session.latest_partial
-    except Exception as e:
-        import logging
-        logging.error(f"Stream error: {e}")
-        return session_id, ""
-
-async def finalize_stream(session_id):
-    if not session_id:
-        return "No session.", "", 0.0, 0.0
-        
-    try:
-        session = await get_session(session_id)
-        transcript, metrics = await session.finalize()
-        
-        # Run RAG
         p_input = PipelineInput(query=transcript)
         response = await pipeline.execute(p_input)
         
-        await cleanup_session(session_id)
+        sources = [{"chunk_id": s.chunk_id, "text": s.text, "score": str(s.score)} for s in response.sources]
         
-        sources = "\n".join([f"[{s.chunk_id}] {s.text}" for s in response.sources])
-        stt_latency = metrics.get("stt_final_ms", 0) / 1000
-        post_stt_ms = response.latency.get("post_stt_total_ms", 0)
-        total_lat = (post_stt_ms / 1000) + stt_latency
+        lat = LatencyMetrics(
+            stt_ms=stt_ms,
+            embedding_ms=response.latency.get("embedding_ms", 0),
+            retrieval_ms=response.latency.get("retrieval_ms", 0),
+            rerank_ms=response.latency.get("reranking_ms", 0),
+            generation_ms=response.latency.get("generation_ms", 0),
+            total_ms=stt_ms + response.latency.get("post_stt_total_ms", 0)
+        )
         
-        # Combine metrics to show in UI
-        full_metrics = {**metrics, **response.latency, "full_pipeline_ms": total_lat * 1000}
-        metrics_str = "\n".join([f"{k}: {v:.2f} ms" if isinstance(v, float) else f"{k}: {v}" for k, v in full_metrics.items()])
-        
-        final_answer = f"Transcript: {transcript}\n\nAnswer: {response.answer}\n\n--- LATENCY METRICS ---\n{metrics_str}"
-        return final_answer, sources, total_lat, stt_latency
+        return VoiceResponse(
+            answer=response.answer,
+            transcript=transcript,
+            sources=sources,
+            guardrail=response.guardrail.value,
+            guardrail_reason=response.guardrail_reason,
+            latency=lat
+        )
     except Exception as e:
         import logging
-        logging.error(f"Finalize error: {str(e)}", exc_info=True)
-        return f"Processing error: {str(e)[:100]}", "", 0.0, 0.0
+        import traceback
+        logging.error(f"Voice query error: {str(e)}", exc_info=True)
+        
+        # Unwrap tenacity.RetryError if present to catch the underlying 429
+        error_str = str(e)
+        if hasattr(e, 'last_attempt') and e.last_attempt is not None:
+            try:
+                e.last_attempt.result()
+            except Exception as inner_e:
+                error_str = str(inner_e)
+                
+        if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "ClientError" in str(e):
+            raise HTTPException(status_code=429, detail="Gemini API daily quota (20 requests/day) exceeded. Ensure you have enabled GCP billing on your AI Studio project.")
+            
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-ui_css = """
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
-:root, .light {
-    --ink: #16130f;
-    --panel: #e8c875;
-    --panel-light: #f2d994;
-    --line: #3c2b16;
-    --gold: #d6a84f;
-    --champagne: #f3d58a;
-    --paper: #17130d;
-    --input-bg: #f8e9b8;
-    --input-text: #17130d;
-    --button-shadow: #6b5128;
-    --text-muted: #493618;
-    --btn-primary: var(--ink);
-    --btn-primary-text: var(--champagne);
-}
+from fastapi import WebSocket, WebSocketDisconnect
+import json
 
-.dark {
-    --ink: #f8e9b8;
-    --panel: #2a2215;
-    --panel-light: #1a150c;
-    --line: #6b5128;
-    --gold: #110d08;
-    --champagne: #16130f;
-    --paper: #f8e9b8;
-    --input-bg: #221c12;
-    --input-text: #f8e9b8;
-    --button-shadow: #000000;
-    --text-muted: #d6a84f;
-    --btn-primary: var(--gold);
-    --btn-primary-text: var(--ink);
-}
+@app.websocket("/api/v1/stream")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    session = SarvamStreamSession()
+    success = await session.connect()
+    
+    if not success:
+        await websocket.close(code=1011, reason="Failed to connect to Sarvam")
+        return
+        
+    try:
+        while True:
+            data = await websocket.receive()
+            if "bytes" in data:
+                # Expecting raw 16kHz mono PCM bytes
+                import numpy as np
+                import scipy.signal
+                y = np.frombuffer(data["bytes"], dtype=np.int16)
+                await session.send_chunk((16000, y))
+                
+                # Send back any partials
+                if session.latest_partial:
+                    await websocket.send_json({"type": "partial", "text": session.latest_partial})
+                    
+            elif "text" in data:
+                msg = json.loads(data["text"])
+                if msg.get("type") == "stop":
+                    transcript, metrics = await session.finalize()
+                    if not transcript.strip():
+                        await websocket.send_json({"type": "error", "message": "No speech detected"})
+                        break
+                        
+                    # Run RAG
+                    p_input = PipelineInput(query=transcript)
+                    response = await pipeline.execute(p_input)
+                    
+                    sources = [{"chunk_id": s.chunk_id, "text": s.text, "score": str(s.score)} for s in response.sources]
+                    
+                    stt_ms = metrics.get("stt_final_ms", 0)
+                    lat = {
+                        "stt_ms": stt_ms,
+                        "embedding_ms": response.latency.get("embedding_ms", 0),
+                        "retrieval_ms": response.latency.get("retrieval_ms", 0),
+                        "rerank_ms": response.latency.get("reranking_ms", 0),
+                        "generation_ms": response.latency.get("generation_ms", 0),
+                        "total_ms": stt_ms + response.latency.get("post_stt_total_ms", 0)
+                    }
+                    
+                    await websocket.send_json({
+                        "type": "final",
+                        "answer": response.answer,
+                        "transcript": transcript,
+                        "sources": sources,
+                        "guardrail": response.guardrail.value,
+                        "latency": lat
+                    })
+                    break
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        import logging
+        logging.error(f"WS error: {e}", exc_info=True)
+    finally:
+        await session.close()
 
-body, .gradio-container {
-    background: var(--gold) !important;
-    color: var(--ink) !important;
-    font-family: 'Space Grotesk', sans-serif !important;
-}
 
-.gradio-container {
-    max-width: 1320px !important;
-    margin: 0 auto !important;
-    padding: 24px 32px 44px !important;
-    background-image: linear-gradient(rgba(22, 19, 15, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 19, 15, .07) 1px, transparent 1px) !important;
-    background-size: 34px 34px !important;
-}
-.dark .gradio-container {
-    background-image: linear-gradient(rgba(248, 233, 184, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(248, 233, 184, .07) 1px, transparent 1px) !important;
-}
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-.console {
-    perspective: 1200px;
-    transform-style: preserve-3d;
-}
-
-.masthead {
-    position: relative;
-    min-height: 172px;
-    padding: 32px 38px;
-    overflow: hidden;
-    border: 2px solid var(--ink);
-    border-left: 8px solid var(--ink);
-    background: var(--panel-light);
-    box-shadow: 0 8px 18px rgba(0,0,0, .16);
-}
-
-.masthead:after {
-    content: 'LIVE / RAG-02';
-    position: absolute;
-    right: 28px;
-    top: 24px;
-    color: var(--ink);
-    font: 500 11px 'DM Mono', monospace;
-    letter-spacing: 2px;
-}
-
-.eyebrow {
-    color: var(--ink);
-    font: 500 11px 'DM Mono', monospace;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-}
-
-.masthead h1 {
-    max-width: 690px;
-    margin: 14px 0 8px;
-    color: var(--ink);
-    font-size: clamp(30px, 5vw, 62px);
-    line-height: .98;
-    letter-spacing: 0;
-}
-
-.masthead p { max-width: 580px; margin: 0; color: var(--text-muted); font-size: 15px; }
-.workbench { gap: 24px !important; margin-top: 36px; align-items: stretch !important; }
-.input-deck, .output-deck { transform-style: preserve-3d; }
-.panel {
-    position: relative;
-    min-height: 330px;
-    padding: 24px !important;
-    border: 2px solid var(--ink) !important;
-    background: var(--panel-light) !important;
-    box-shadow: 0 8px 18px rgba(0,0,0, .14);
-}
-.panel:before {
-    content: '';
-    position: absolute;
-    inset: 8px;
-    border: 1px solid rgba(128, 128, 128, .16);
-    pointer-events: none;
-}
-.section-label { color: var(--ink); font: 500 11px 'DM Mono', monospace; letter-spacing: 2px; text-transform: uppercase; }
-.panel h2 { margin: 7px 0 14px; color: var(--ink); font-size: 22px; letter-spacing: 0; }
-.tabs { border-bottom: 1px solid var(--line) !important; }
-.tabs button { color: var(--text-muted) !important; font: 500 12px 'DM Mono', monospace !important; }
-.tabs button.selected { color: var(--ink) !important; border-color: var(--ink) !important; }
-textarea, input, .audio-container { border-color: var(--ink) !important; background: var(--input-bg) !important; color: var(--input-text) !important; border-radius: 2px !important; }
-label span { color: var(--text-muted) !important; font: 500 11px 'DM Mono', monospace !important; text-transform: uppercase; }
-button.primary { border-radius: 2px !important; background: var(--btn-primary) !important; color: var(--btn-primary-text) !important; font-weight: 700 !important; box-shadow: 5px 5px 0 var(--button-shadow) !important; border: 1px solid var(--ink) !important;}
-button.primary:hover { box-shadow: 7px 7px 0 var(--button-shadow) !important; }
-.telemetry { margin-top: 24px; gap: 24px !important; }
-.metric { border-top: 2px solid var(--ink); padding-top: 12px !important; background: transparent !important; }
-.metric input { border: 0 !important; padding-left: 0 !important; font: 500 22px 'DM Mono', monospace !important; background: transparent !important; }
-@media (max-width: 800px) {
-    .gradio-container { padding: 12px !important; }
-    .masthead { padding: 24px; min-height: 190px; box-shadow: 0 6px 14px rgba(0,0,0, .14); }
-    .masthead:after { right: 16px; top: 16px; }
-    .workbench { gap: 16px !important; margin-top: 24px; }
-    .panel { padding: 18px !important; }
-}
-"""
-
-with gr.Blocks(
-    title="HH Goa 2026 Voice RAG",
-    css=ui_css,
-    theme=gr.themes.Base(),
-) as demo:
-    with gr.Column(elem_classes=["console"]):
-        gr.HTML("""
-        <header class="masthead">
-            <div class="eyebrow">Hacker House Goa / Voice Intelligence</div>
-            <h1>Ask the knowledge base.</h1>
-            <p>Multilingual retrieval, grounded answers, and source traces in one instrument panel.</p>
-        </header>
-        """)
-
-        with gr.Row(elem_classes=["workbench"]):
-            with gr.Column(elem_classes=["panel", "input-deck"]):
-                gr.HTML('<div class="section-label">01 / Query input</div><h2>Send a signal</h2>')
-                with gr.Tabs(elem_classes=["tabs"]):
-                    with gr.Tab("VOICE"):
-                        session_id = gr.State("")
-                        audio_in = gr.Audio(sources=["microphone"], type="numpy", streaming=True, label="Record query")
-                        btn_voice = gr.Button("Transmit voice", variant="primary")
-                    with gr.Tab("TEXT"):
-                        text_in = gr.Textbox(label="Type query", lines=5, placeholder="Ask about the corpus...")
-                        btn_text = gr.Button("Run retrieval", variant="primary")
-
-            with gr.Column(elem_classes=["panel", "output-panel"]):
-                gr.HTML('<div class="section-label">02 / Grounded response</div><h2>Signal decoded</h2>')
-                answer_out = gr.Textbox(label="Answer", lines=6)
-                sources_out = gr.Textbox(label="Retrieved sources", lines=5)
-
-        with gr.Row(elem_classes=["telemetry"]):
-            with gr.Column(elem_classes=["metric"]):
-                lat_out = gr.Number(label="Total latency (s)")
-            with gr.Column(elem_classes=["metric"]):
-                stt_out = gr.Number(label="STT latency (s)")
-
-    audio_in.stream(handle_stream, inputs=[session_id, audio_in], outputs=[session_id, answer_out])
-    audio_in.stop_recording(finalize_stream, inputs=[session_id], outputs=[answer_out, sources_out, lat_out, stt_out])
-    btn_text.click(process_text, inputs=[text_in], outputs=[answer_out, sources_out, lat_out, stt_out])
+# Serve the static frontend locally as a convenience
+if os.path.isdir("frontend"):
+    @app.get("/")
+    async def serve_index():
+        return FileResponse("frontend/index.html")
+    app.mount("/", StaticFiles(directory="frontend"), name="frontend")
 
 if __name__ == "__main__":
-    server_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
-    demo.launch(server_name="0.0.0.0", server_port=server_port)
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)

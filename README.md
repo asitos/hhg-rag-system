@@ -1,72 +1,82 @@
-# Hacker House Goa 2026: Voice-Enabled RAG Task 2
+---
+title: HH Goa 2026 Voice RAG
+sdk: docker
+app_port: 8000
+python_version: "3.11"
+---
+# HH Goa 2026: Voice-Enabled RAG System
 
-A low-latency, voice-enabled Retrieval-Augmented Generation (RAG) system built from scratch to query the `ai4bharat/MSMARCO-XI` dataset.
+A multilingual, voice-first RAG pipeline designed for deployment on Hugging Face Spaces with a decoupled static frontend on GitHub Pages.
 
-## Final Architecture
+## Architecture
 
-```mermaid
-graph TD;
-    Mic-->Sarvam;
-    Sarvam-->Harness;
-    Harness-->PreGuardrails[Pre Guardrails];
-    PreGuardrails-->Embedding;
-    Embedding-->Qdrant;
-    Qdrant-->Multi[Multi-strategy Retrieval];
-    Multi-->Reranker;
-    Reranker-->Gemini;
-    Gemini-->PostGuardrails[Post Guardrails];
-    PostGuardrails-->Response;
+```text
+                 GitHub Pages
+                Static Frontend
+                     │
+                     │ HTTPS
+                     ▼
+              Hugging Face Space
+                 Python Backend
+                     │
+        ┌────────────┼────────────┐
+        ▼            ▼            ▼
+      Sarvam       RAG          Gemini
+        │            │            │
+        └────────────┼────────────┘
+                     ▼
+                 JSON result
+                     │
+                     ▼
+                Web Frontend
 ```
 
-### Dataset Ingestion Pipeline
-```mermaid
-graph TD;
-    MSMARCO-XI-->Router[Chunking Router];
-    Router-->Strategies[4 strategies: Fixed, Sentence, Paragraph, Semantic];
-    Strategies-->Embedding;
-    Embedding-->Qdrant;
-```
+## Deployment
 
-## Why These Technologies Were Chosen
+This repository is split into two halves:
 
-1. **STT (Sarvam Saaras v2)**: We explicitly chose Sarvam AI over ElevenLabs because this project specifically demands robustness for 14 Indic Languages. Sarvam's models achieve noticeably lower WER (Word Error Rates) on Indian accents and code-switched audio.
-2. **Embedding (`multilingual-e5-base`)**: An incredibly robust and dense multilingual model allowing cross-lingual queries (e.g. asking in English and retrieving Hindi/Assamese chunks).
-3. **Vector DB (Qdrant)**: In-memory mode provides sub-millisecond multi-strategy filtering while strictly conforming to the task requirements.
-4. **LLM (`gemini-2.0-flash`)**: Used for final grounded generation, specifically prompted to refuse hallucination.
+1. **Frontend (`/frontend`)**: A pure HTML/CSS/JS single-page application.
+   - Deployed automatically via GitHub Actions to GitHub Pages.
+   - Requires no Python or server-side rendering.
+   - Configurable via `frontend/js/config.js` to point to the backend URL.
 
-## Project Structure
-- `src/models.py`: Strongly typed Pydantic models for explicit orchestration.
-- `src/chunking/`: Contains our four distinct chunking strategies.
-- `src/retrieval/`: Wraps Qdrant, embeddings, and cross-encoder reranking.
-- `src/guardrails/`: Safety, off-topic, and hallucination checks.
-- `src/pipeline/harness.py`: The master orchestration layer with retry logic.
-- `app.py`: A simple Gradio frontend.
+2. **Backend (`app.py` & `/src`)**: A FastAPI server.
+   - Designed to run as a Docker Space on Hugging Face.
+   - Exposes REST endpoints (`/api/v1/voice`, `/api/v1/text`, `/health`).
+   - Connects to Qdrant (local), Gemini API, and Sarvam STT.
 
-## Benchmarks & Latency
+## Local Development
 
-We ran a 100-query benchmark suite (`python bench/bench.py`). 
-
-Because we use a Cloud LLM (Gemini 2.0 Flash) and await the full answer, achieving <200ms end-to-end is impossible due to network TTFT. However, the internal RAG architecture (Embedding + Qdrant Retrieval + Reranking) executes locally in **<100ms**!
-
-*To reproduce benchmarks locally:*
 ```bash
-python bench/bench.py
+# 1. Start the backend
+pip install -r requirements.txt
+uvicorn app:app --reload --port 8000
+
+# 2. Start the frontend
+cd frontend
+python -m http.server 3000
 ```
 
-## Running the Project
+Open `http://localhost:3000` in your browser.
 
-**1. Set Environment Variables:**
-Copy `.env.example` to `.env` and fill in:
-- `GEMINI_API_KEY`
-- `SARVAM_API_KEY`
+## Environment Variables
 
-**2. Ingest Data:**
-```bash
-python scripts/ingest.py
-```
+Copy `.env.example` to `.env` and fill in your keys for local development.
+**Never commit `.env` to Git.**
 
-**3. Run the UI:**
-```bash
-python app.py
-```
-This launches a Gradio app at `http://localhost:7860` with both Voice and Text interfaces.
+Required secrets on Hugging Face Spaces:
+- `GEMINI_API_KEY`: Google Gemini token.
+- `SARVAM_API_KEY`: Sarvam AI token.
+- `FRONTEND_ORIGIN`: Your GitHub Pages URL (e.g., `https://username.github.io`) to restrict CORS.
+
+## Performance & Latency
+
+STT latency has been heavily optimized:
+- **Streaming WebSockets** (where supported): `< 200ms` wait from speech end.
+- **REST Fallback**: ~`872ms` P50 for 1-second chunks.
+- **Generation**: Constrained by Gemini 3.6 Flash free tier (~`4.9s`).
+
+## Limitations
+
+- Heavy embeddings or huge datasets are not committed. Ensure you run the ingestion pipeline (`tests/test_harness.py` or similar scripts) to populate the local Qdrant database `data/qdrant_db` before deploying, or use a managed Qdrant cloud instance.
+- The Gemini API free tier restricts traffic to 20 requests per day.

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HH Goa 2026 Voice RAG</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dark">
+    <div class="container">
+        <header class="masthead">
+            <div class="eyebrow">Hacker House Goa / Voice Intelligence</div>
+            <h1>Ask the knowledge base.</h1>
+            <p>Multilingual retrieval, grounded answers, and source traces in one instrument panel.</p>
+            <div class="theme-toggle">
+                <button id="theme-btn" aria-label="Toggle theme">☀️</button>
+            </div>
+        </header>
+
+        <div class="workbench">
+            <div class="panel input-deck">
+                <div class="section-label">01 / Query input</div>
+                <h2>Send a signal</h2>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="voice">VOICE</button>
+                    <button class="tab-btn" data-tab="text">TEXT</button>
+                </div>
+
+                <div class="tab-content active" id="tab-voice">
+                    <div class="record-ui">
+                        <button id="record-btn" class="primary-btn">
+                            <span class="icon">🎤</span> Start Recording
+                        </button>
+                        <div id="recording-status" class="status-indicator hidden">
+                            <div class="pulse"></div>
+                            <span>Recording...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-text">
+                    <textarea id="text-input" rows="4" placeholder="Type your query here..."></textarea>
+                    <button id="submit-text-btn" class="primary-btn">Run Retrieval</button>
+                </div>
+            </div>
+
+            <div class="panel output-deck">
+                <div class="section-label">02 / Grounded response</div>
+                <h2>Signal decoded</h2>
+                
+                <div class="state-container hidden" id="loading-state">
+                    <div class="spinner"></div>
+                    <p id="loading-text">Processing...</p>
+                </div>
+
+                <div class="state-container hidden" id="error-state">
+                    <p class="error-msg" id="error-text"></p>
+                </div>
+
+                <div class="result-container" id="result-container">
+                    <div class="field">
+                        <label>Transcript</label>
+                        <div class="transcript-box" id="transcript-out"></div>
+                    </div>
+                    
+                    <div class="field">
+                        <label>Answer</label>
+                        <div class="answer-box" id="answer-out"></div>
+                    </div>
+
+                    <div class="field">
+                        <label>Retrieved Sources</label>
+                        <div class="sources-box" id="sources-out"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="telemetry">
+            <div class="metric">
+                <label>Backend Status</label>
+                <div id="health-out" class="value text-value">Checking...</div>
+            </div>
+            <div class="metric">
+                <label>Guardrail Status</label>
+                <div id="guardrail-out" class="value text-value">-</div>
+            </div>
+            <div class="metric">
+                <label>STT Latency</label>
+                <div id="stt-lat-out" class="value">0.00s</div>
+            </div>
+            <div class="metric">
+                <label>Total Latency</label>
+                <div id="total-lat-out" class="value">0.00s</div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="js/config.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

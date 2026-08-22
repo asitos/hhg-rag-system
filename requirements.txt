@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+datasets
+sentence-transformers
+qdrant-client
+google-genai
+httpx
+tenacity
+numpy
+python-multipart
+pytest
+pytest-asyncio
+optimum[onnxruntime]
+sarvamai
+pydub

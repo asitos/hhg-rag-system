@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     # API Keys
     sarvam_api_key: str = ""
     gemini_api_key: str = ""
+    frontend_origin: str = ""
 
     # Supported Languages (ISO codes for the 14 Indic + English)
     supported_languages: List[str] = [

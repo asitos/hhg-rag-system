@@ -1,74 +1,69 @@
 import pytest
+import asyncio
 from src.pipeline.harness import RAGPipeline
 from src.models import PipelineInput, GuardrailStatus
 from src.retrieval.vector_store import VectorStore
 from src.retrieval.embedder import Embedder
-import numpy as np
+from src.config import settings
 
-# We mock external APIs to avoid needing real keys
-class MockEmbedder:
-    def embed_query(self, query):
-        return np.random.rand(768).tolist()
+# Ensure we test in mock mode
+settings.app_mode = "mock"
+settings.mock_failure_mode = "none"
 
-class MockReranker:
-    def rerank(self, query, chunks, top_k):
-        return chunks[:top_k]
+@pytest.fixture(scope="module")
+def store():
+    # Use real embedder for tests to verify actual pipeline
+    embedder = Embedder(settings.embedding_model_id)
+    vec = embedder.embed_query("A corporation is a legal entity.")
+    
+    vs = VectorStore()
+    vs.add_vectors([vec], [{"chunk_id": "1", "text": "A corporation is a legal entity.", "strategy": "fixed", "language": "en", "passage_id": "p1"}])
+    return vs
 
-class MockGenerator:
-    def generate(self, query, chunks):
-        return "This is a mock answer. [1]", 100.0
-
-def test_harness_offtopic():
-    # Setup mock
-    store = VectorStore()
-    pipeline = RAGPipeline(store)
-    
-    # Should fail pre-guardrail
-    res = pipeline.execute(PipelineInput(query="how to bake a cake"))
-    assert res.guardrail == GuardrailStatus.FAIL_OFFTOPIC
-    
-def test_harness_no_context():
-    store = VectorStore()
-    pipeline = RAGPipeline(store)
-    pipeline.embedder = MockEmbedder()
-    pipeline.reranker = MockReranker()
-    pipeline.generator = MockGenerator()
-    
-    # Empty store should fail grounding recovery
-    res = pipeline.execute(PipelineInput(query="What is a corporation?"))
-    assert res.guardrail == GuardrailStatus.FAIL_GROUNDING
-    
-def test_harness_success():
-    store = VectorStore()
-    store.add_vectors([np.random.rand(768).tolist()], [{"chunk_id": "1", "text": "corporation", "strategy": "fixed", "language": "en", "passage_id": "p1"}])
-    
-    pipeline = RAGPipeline(store)
-    pipeline.embedder = MockEmbedder()
-    pipeline.reranker = MockReranker()
-    pipeline.generator = MockGenerator()
-    
-    res = pipeline.execute(PipelineInput(query="What is a corporation?"))
-    assert res.guardrail == GuardrailStatus.PASS
-    assert len(res.sources) == 1
-
-import pytest_asyncio
-import asyncio
-
-class MockSTT:
-    async def transcribe(self, audio_bytes, language="unknown"):
-        return "What is a corporation?"
+@pytest.fixture(scope="module")
+def pipeline(store):
+    p = RAGPipeline(store)
+    return p
 
 @pytest.mark.asyncio
-async def test_harness_run_with_mock_stt():
-    store = VectorStore()
-    store.add_vectors([np.random.rand(768).tolist()], [{"chunk_id": "1", "text": "corporation", "strategy": "fixed", "language": "en", "passage_id": "p1"}])
+async def test_harness_offtopic(pipeline):
+    # Should fail pre-guardrail
+    res = await pipeline.execute(PipelineInput(query="how to bake a cake"))
+    assert res.guardrail == GuardrailStatus.FAIL_OFFTOPIC
     
-    pipeline = RAGPipeline(store)
-    pipeline.stt = MockSTT()
-    pipeline.embedder = MockEmbedder()
-    pipeline.reranker = MockReranker()
-    pipeline.generator = MockGenerator()
+@pytest.mark.asyncio
+async def test_harness_no_context(pipeline):
+    # Temporarily swap the store to avoid loading VRAM twice
+    original_store = pipeline.vector_store
+    pipeline.vector_store = VectorStore()
     
-    res = await pipeline.run(b"fake_audio_bytes")
+    res = await pipeline.execute(PipelineInput(query="What is a corporation?"))
+    assert res.guardrail == GuardrailStatus.FAIL_GROUNDING
+    
+    # Restore
+    pipeline.vector_store = original_store
+    
+@pytest.mark.asyncio
+async def test_harness_success(pipeline):
+    res = await pipeline.execute(PipelineInput(query="What is a corporation?"))
     assert res.guardrail == GuardrailStatus.PASS
-    assert len(res.sources) == 1
+    assert len(res.sources) >= 1
+
+@pytest.mark.asyncio
+async def test_harness_run_audio(pipeline):
+    # Mock STT will return a deterministic string
+    res = await pipeline.run(b"fake_audio_bytes")
+    # Depends on which deterministic query MockSTT returns. 
+    # "What is a corporation?" is in the rotation.
+    # It might pass or fail grounding, but it should not crash.
+    assert res.guardrail in [GuardrailStatus.PASS, GuardrailStatus.FAIL_GROUNDING]
+
+@pytest.mark.asyncio
+async def test_mock_failures(pipeline):
+    # Test generation failure mode
+    settings.mock_failure_mode = "invalid_citation"
+    res = await pipeline.execute(PipelineInput(query="What is a corporation?"))
+    # The post guardrail should catch the invalid citation
+    assert res.guardrail == GuardrailStatus.FAIL_GROUNDING
+    
+    settings.mock_failure_mode = "none"

@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+import asyncio
+from src.config import settings
 import json
 import time
 import csv
@@ -54,22 +56,28 @@ def run_benchmarks(num_queries=100, output_csv="bench/results.csv"):
         
     print(f"Running benchmark on {len(test_queries)} queries...")
     
+    # Setup mock file based on mode
+    if settings.app_mode == "mock":
+        output_csv = output_csv.replace(".csv", "-mock.csv")
+        
+    print(f"Running in APP_MODE={settings.app_mode}")
+    
     # Warmup
-    pipeline.execute(PipelineInput(query=test_queries[0]))
+    asyncio.run(pipeline.execute(PipelineInput(query=test_queries[0])))
     
     results = []
     
     for i, q in enumerate(test_queries):
         try:
-            res = pipeline.execute(PipelineInput(query=q))
+            res = asyncio.run(pipeline.execute(PipelineInput(query=q)))
             lat = res.latency
             results.append({
                 "query": q,
                 "embedding_ms": lat.get("embedding_ms", 0),
                 "retrieval_ms": lat.get("retrieval_ms", 0),
-                "rerank_ms": lat.get("rerank_ms", 0),
+                "rerank_ms": lat.get("reranking_ms", 0),
                 "generation_ms": lat.get("generation_ms", 0),
-                "post_stt_ms": lat.get("post_stt_ms", 0),
+                "post_stt_ms": lat.get("post_stt_total_ms", 0),
                 "status": res.guardrail.value
             })
             time.sleep(4)
@@ -82,7 +90,7 @@ def run_benchmarks(num_queries=100, output_csv="bench/results.csv"):
             writer.writeheader()
             writer.writerows(results)
             
-    post_stt = [r["post_stt_ms"] for r in results]
+    post_stt = [r["post_stt_total_ms"] for r in results]
     
     if post_stt:
         print("\n" + "="*40)

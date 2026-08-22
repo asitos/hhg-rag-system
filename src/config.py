@@ -2,6 +2,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
 class Settings(BaseSettings):
+    app_mode: str = "mock"
+    mock_failure_mode: str = "none"
+    mock_latency: bool = False
+    mock_stt_latency_ms: int = 100
+    mock_generation_latency_ms: int = 300
+    
     # API Keys
     sarvam_api_key: str = ""
     gemini_api_key: str = ""

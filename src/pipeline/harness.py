@@ -11,19 +11,28 @@ from src.retrieval.reranker import Reranker
 from src.guardrails.pre import PreGuardrail
 from src.guardrails.post import PostGuardrail
 from src.generation.gemini import Generator
+
+from src.generation.mock import MockGenerator
+from src.stt.mock import MockSTT
+
 from src.models import PipelineInput, PipelineOutput, RetrievedChunk, GuardrailStatus
 
 logger = logging.getLogger(__name__)
 
 class RAGPipeline:
     def __init__(self, vector_store: VectorStore):
-        self.stt = SarvamSTT(settings.sarvam_api_key)
+        if settings.app_mode == "mock":
+            self.stt = MockSTT()
+            self.generator = MockGenerator(settings.gemini_api_key)
+        else:
+            self.stt = SarvamSTT(settings.sarvam_api_key)
+            self.generator = Generator(settings.gemini_api_key)
+            
         self.embedder = Embedder(settings.embedding_model_id)
         self.vector_store = vector_store
         self.reranker = Reranker(settings.cross_encoder_id)
         self.pre_guard = PreGuardrail()
         self.post_guard = PostGuardrail()
-        self.generator = Generator(settings.gemini_api_key)
         
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=0.1))
     async def run(self, audio_bytes: bytes) -> PipelineOutput:

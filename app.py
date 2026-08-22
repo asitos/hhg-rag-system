@@ -42,7 +42,11 @@ app.add_middleware(
 
 vector_store = VectorStore()
 pipeline = RAGPipeline(vector_store)
-rest_stt = SarvamSTT()
+if settings.app_mode == "mock":
+    from src.stt.mock import MockSTT, MockStreamSession
+    rest_stt = MockSTT()
+else:
+    rest_stt = SarvamSTT()
 
 from contextlib import asynccontextmanager
 
@@ -73,11 +77,11 @@ class VoiceResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "mode": settings.app_mode}
 
 @app.get("/api/v1/health")
 async def api_health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "mode": settings.app_mode}
 
 @app.post("/api/v1/text", response_model=VoiceResponse)
 async def process_text_query(query: str = Form(...)):
@@ -202,7 +206,10 @@ import json
 @app.websocket("/api/v1/stream")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    session = SarvamStreamSession()
+    if settings.app_mode == "mock":
+        session = MockStreamSession()
+    else:
+        session = SarvamStreamSession()
     success = await session.connect()
     
     if not success:

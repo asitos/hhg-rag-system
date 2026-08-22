@@ -19,13 +19,13 @@ BENCH_DIR = Path(__file__).resolve().parent
 def load_data():
     passages = []
     if CORPUS_FILE.exists():
-        with open(CORPUS_FILE, "r") as f:
+        with open(CORPUS_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 passages.append(json.loads(line))
                 
     queries = []
     if QUERIES_FILE.exists():
-        with open(QUERIES_FILE, "r") as f:
+        with open(QUERIES_FILE, "r", encoding="utf-8") as f:
             for line in f:
                 queries.append(json.loads(line))
                 

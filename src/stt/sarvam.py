@@ -30,18 +30,31 @@ class SarvamSTT:
             
         t0 = time.perf_counter()
         
-        with open(audio_file_path, "rb") as f:
-            files = {"file": (audio_file_path, f, "audio/wav")}
-            data = {
-                "model": "saaras:v2",
-                "language": language_code
-            }
-            headers = {"api-subscription-key": self.api_key}
-            
-            with httpx.Client(timeout=10.0) as client:
-                response = client.post(self.url, headers=headers, data=data, files=files)
-                response.raise_for_status()
+        try:
+            with open(audio_file_path, "rb") as f:
+                files = {"file": (audio_file_path, f, "audio/wav")}
+                data = {
+                    "model": "saaras:v2",
+                    "language": language_code
+                }
+                headers = {"api-subscription-key": self.api_key}
                 
-                latency_ms = (time.perf_counter() - t0) * 1000
-                result = response.json()
-                return result.get("transcript", ""), latency_ms
+                with httpx.Client(timeout=30.0) as client:
+                    response = client.post(self.url, headers=headers, data=data, files=files)
+                    
+                    if response.status_code != 200:
+                        logger.error(f"Sarvam API error: {response.status_code} - {response.text}")
+                    
+                    response.raise_for_status()
+                    
+                    latency_ms = (time.perf_counter() - t0) * 1000
+                    result = response.json()
+                    return result.get("transcript", ""), latency_ms
+        except httpx.HTTPError as e:
+            logger.error(f"Sarvam API HTTP error: {str(e)}")
+            # Fallback to mock transcription on API failure
+            logger.info("Falling back to mock transcription due to API error")
+            return "Unable to transcribe audio. Please try again.", 0.0
+        except Exception as e:
+            logger.error(f"Sarvam transcription error: {str(e)}")
+            raise

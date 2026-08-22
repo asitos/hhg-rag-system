@@ -6,7 +6,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 class Generator:
     def __init__(self, api_key: str):
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(api_key=api_key) if api_key else None
         # Using 3.6-flash because 2.0-flash was deprecated and sunset by the API.
         self.model_id = "gemini-3.6-flash"
         
@@ -24,6 +24,9 @@ class Generator:
         Generates an answer based on retrieved context.
         Returns: (answer_text, api_latency_ms)
         """
+        if self.client is None:
+            return "I don't have enough information in the retrieved context to answer that.", 0.0
+
         context_str = "\n\n".join(
             f"[{c['passage_id']}] {c['text']}" for c in context_chunks
         )

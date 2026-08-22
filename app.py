@@ -15,25 +15,22 @@ except Exception as e:
     pipeline = None
     print(f"Warning: Could not initialize pipeline. Ensure index exists. Error: {e}")
 
-stt_client = SarvamSTT()
-
-def process_audio(audio_path):
+async def process_audio(audio_path):
     if not pipeline:
         return "Pipeline not initialized.", "", 0.0, 0.0
     if not audio_path:
         return "No audio provided.", "", 0.0, 0.0
         
     try:
-        transcript, stt_latency = stt_client.transcribe(audio_path)
-        if not transcript:
-            return "Could not transcribe audio. Please try again.", "", 0.0, 0.0
+        with open(audio_path, "rb") as f:
+            audio_bytes = f.read()
             
-        p_input = PipelineInput(query=transcript)
-        response = pipeline.execute(p_input)
+        response = await pipeline.run(audio_bytes)
         
         sources = "\n".join([f"[{s.chunk_id}] {s.text}" for s in response.sources])
-        total_lat = (response.latency.get("post_stt_ms", 0) + stt_latency) / 1000
-        return response.answer, sources, total_lat, stt_latency / 1000
+        total_lat = response.latency.get("total_ms", 0) / 1000
+        stt_latency = response.latency.get("stt_ms", 0) / 1000
+        return response.answer, sources, total_lat, stt_latency
     except Exception as e:
         import logging
         logging.error(f"Audio processing error: {str(e)}", exc_info=True)

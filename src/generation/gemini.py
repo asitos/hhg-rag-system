@@ -34,9 +34,9 @@ class Generator:
         prompt = f"Context:\n{context_str}\n\nQuestion: {query}\n\nAnswer:"
         
         t0 = time.perf_counter()
-        chat = self.client.chats.create(model=self.model_id)
-        # In a real deployed UI, we would use send_message_stream to get TTFT < 200ms.
-        # For this harness, we await the full generation and track the absolute API latency.
+        # Use configuration from plan
+        config = {"max_output_tokens": 256, "temperature": 0.1}
+        chat = self.client.chats.create(model=self.model_id, config=config)
         response = chat.send_message([self.system_prompt, prompt])
         latency_ms = (time.perf_counter() - t0) * 1000
         

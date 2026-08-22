@@ -50,3 +50,25 @@ def test_harness_success():
     res = pipeline.execute(PipelineInput(query="What is a corporation?"))
     assert res.guardrail == GuardrailStatus.PASS
     assert len(res.sources) == 1
+
+import pytest_asyncio
+import asyncio
+
+class MockSTT:
+    async def transcribe(self, audio_bytes, language="unknown"):
+        return "What is a corporation?"
+
+@pytest.mark.asyncio
+async def test_harness_run_with_mock_stt():
+    store = VectorStore()
+    store.add_vectors([np.random.rand(768).tolist()], [{"chunk_id": "1", "text": "corporation", "strategy": "fixed", "language": "en", "passage_id": "p1"}])
+    
+    pipeline = RAGPipeline(store)
+    pipeline.stt = MockSTT()
+    pipeline.embedder = MockEmbedder()
+    pipeline.reranker = MockReranker()
+    pipeline.generator = MockGenerator()
+    
+    res = await pipeline.run(b"fake_audio_bytes")
+    assert res.guardrail == GuardrailStatus.PASS
+    assert len(res.sources) == 1

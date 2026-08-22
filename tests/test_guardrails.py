@@ -25,5 +25,5 @@ def test_post_guardrail_grounding():
     guard = PostGuardrail()
     chunks = [{"passage_id": "p_1", "text": "a", "chunk_id": "1", "score": 1.0, "strategy": "s", "language": "en"}]
     # Needs at least one chunk citation
-    assert guard.check_grounding("The answer is [p_1]", chunks) == GuardrailStatus.PASS
+    assert guard.check_grounding("The answer is [1]", chunks) == GuardrailStatus.PASS
     assert guard.check_grounding("The answer is [p_99]", chunks) == GuardrailStatus.FAIL_GROUNDING

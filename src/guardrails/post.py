@@ -23,8 +23,8 @@ class PostGuardrail:
                 
         # 2. Heuristic Grounding Check (Citation tracking)
         # If the LLM was instructed to cite chunks like [p_123], ensure they exist in context
-        cited_ids = set(re.findall(r'\[(p_\d+)\]', answer))
-        context_ids = {c["passage_id"] for c in context_chunks}
+        cited_ids = set(re.findall(r'\[([^\]]+)\]', answer))
+        context_ids = {c.get("chunk_id", c.get("passage_id")) for c in context_chunks}
         
         # If citations were found but none exist in the context, it's a hallucination
         if cited_ids and not cited_ids.intersection(context_ids):

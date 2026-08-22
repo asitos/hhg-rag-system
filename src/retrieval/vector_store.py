@@ -2,22 +2,24 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
 from typing import List, Dict, Any, Optional
 import uuid
+import os
 
 class VectorStore:
-    def __init__(self, dimension: int = 768):
-        """
-        Initializes an in-memory Qdrant index.
-        Dimension 768 is standard for e5-base.
-        """
-        self.client = QdrantClient(":memory:")
+    def __init__(self, dimension: int = 768, persist_dir: Optional[str] = None):
         self.collection_name = "msmarco"
-        self.client.create_collection(
-            collection_name=self.collection_name,
-            vectors_config=VectorParams(size=dimension, distance=Distance.COSINE)
-        )
+        if persist_dir:
+            os.makedirs(persist_dir, exist_ok=True)
+            self.client = QdrantClient(path=persist_dir)
+        else:
+            self.client = QdrantClient(":memory:")
+            
+        if not self.client.collection_exists(self.collection_name):
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(size=dimension, distance=Distance.COSINE)
+            )
 
     def add_vectors(self, vectors: List[List[float]], metadatas: List[Dict[str, Any]]):
-        """Adds normalized vectors to Qdrant with associated metadata."""
         if len(vectors) != len(metadatas):
             raise ValueError("Mismatched vectors and metadata lengths")
             
@@ -31,7 +33,6 @@ class VectorStore:
                 )
             )
             
-        # Batch upload
         batch_size = 100
         for i in range(0, len(points), batch_size):
             self.client.upsert(
@@ -46,9 +47,6 @@ class VectorStore:
         strategy: Optional[str] = None,
         language: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Searches the index for the closest vectors, optionally filtering by strategy and language.
-        """
         must_conditions = []
         if strategy:
             must_conditions.append(FieldCondition(key="strategy", match=MatchValue(value=strategy)))

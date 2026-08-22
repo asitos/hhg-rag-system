@@ -18,5 +18,6 @@ dependencies = [
     "python-multipart",
     "gradio",
     "pytest",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "optimum[onnxruntime]"
 ]

@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
                     "chunk_id": p["id"],
                     "text": p["text"],
                     "language": p["language"],
-                    "strategy": "semantic"
+                    "strategy": "semantic", "passage_id": p["id"]
                 })
             vs.add_vectors(vecs, payloads)
             print(f"Added {len(vecs)} vectors to Qdrant demo index.")

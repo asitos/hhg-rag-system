@@ -71,8 +71,8 @@ class RAGPipeline:
                 
         # Tool call pattern for recovery
         if not candidate_chunks:
-            # Rephrase via LLM (Mock tool call logic)
-            rephrased = self.generator.generate(f"Rephrase this query for search: {p_input.query}", [])[0]
+            # Rephrase via LLM (LLM tool call logic)
+            rephrased = (await self.generator.generate(f"Rephrase this query for search: {p_input.query}", []))[0]
             query_emb = self.embedder.embed_query(rephrased)
             candidate_chunks = self.vector_store.search(query_emb, top_k=10)
             if not candidate_chunks:
@@ -91,7 +91,7 @@ class RAGPipeline:
             
         # 6. Generation
         t0 = time.perf_counter()
-        answer, llm_latency = self.generator.generate(p_input.query, top_chunks)
+        answer, llm_latency = await self.generator.generate(p_input.query, top_chunks)
         latencies["generation_ms"] = llm_latency
         
         # 7. Post-Generation Guardrail
@@ -107,7 +107,7 @@ class RAGPipeline:
         sources = [RetrievedChunk(**c) for c in top_chunks]
         return self._build_response(answer, sources, post_status, reason, latencies, t_start)
         
-    def execute(self, p_input: PipelineInput) -> PipelineOutput:
+    async def execute(self, p_input: PipelineInput) -> PipelineOutput:
         """Sync fallback for benchmarking and legacy UI"""
         import asyncio
         # We simulate the async run without audio bytes since execute provides a query
@@ -136,7 +136,7 @@ class RAGPipeline:
             latency=latencies
         )
 
-    def execute(self, p_input: PipelineInput) -> PipelineOutput:
+    async def execute(self, p_input: PipelineInput) -> PipelineOutput:
         """Sync text-only pipeline execution for benchmarking"""
         t_start = time.perf_counter()
         latencies = {}
@@ -167,7 +167,7 @@ class RAGPipeline:
                 candidate_chunks.append(c)
                 
         if not candidate_chunks:
-            rephrased = self.generator.generate(f"Rephrase this query for search: {p_input.query}", [])[0]
+            rephrased = (await self.generator.generate(f"Rephrase this query for search: {p_input.query}", []))[0]
             query_emb = self.embedder.embed_query(rephrased)
             candidate_chunks = self.vector_store.search(query_emb, top_k=10)
             if not candidate_chunks:
@@ -184,7 +184,7 @@ class RAGPipeline:
             return self._build_response("I don't have enough information.", [], GuardrailStatus.FAIL_GROUNDING, "Chunks failed reranking", latencies, t_start)
             
         t0 = time.perf_counter()
-        answer, llm_latency = self.generator.generate(p_input.query, top_chunks)
+        answer, llm_latency = await self.generator.generate(p_input.query, top_chunks)
         latencies["generation_ms"] = llm_latency
         
         t0 = time.perf_counter()

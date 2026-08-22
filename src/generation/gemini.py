@@ -19,7 +19,7 @@ class Generator:
         )
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=0.5, min=1, max=4))
-    def generate(self, query: str, context_chunks: List[Dict[str, Any]]) -> Tuple[str, float]:
+    async def generate(self, query: str, context_chunks: List[Dict[str, Any]]) -> Tuple[str, float]:
         """
         Generates an answer based on retrieved context.
         Returns: (answer_text, api_latency_ms)
@@ -34,10 +34,11 @@ class Generator:
         prompt = f"Context:\n{context_str}\n\nQuestion: {query}\n\nAnswer:"
         
         t0 = time.perf_counter()
-        # Use configuration from plan
-        config = {"max_output_tokens": 256, "temperature": 0.1}
-        chat = self.client.chats.create(model=self.model_id, config=config)
-        response = chat.send_message([self.system_prompt, prompt])
+        response = await self.client.aio.models.generate_content(
+            model=self.model_id,
+            contents=[prompt],
+            config={"system_instruction": self.system_prompt, "max_output_tokens": 256, "temperature": 0.1}
+        )
         latency_ms = (time.perf_counter() - t0) * 1000
         
         return response.text.strip(), latency_ms

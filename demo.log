@@ -1,0 +1,10 @@
+Starting HH Goa Voice RAG Video Demo...
+Traceback (most recent call last):
+  File "/home/asitos/Projects/hhg/gradio_app.py", line 9, in <module>
+    from src.pipeline.harness import RAGPipeline
+  File "/home/asitos/Projects/hhg/src/pipeline/harness.py", line 15, in <module>
+    from src.generation.mock import MockGenerator
+  File "/home/asitos/Projects/hhg/src/generation/mock.py", line 28
+    ans = f"Based on the retrieved context:
+          ^
+SyntaxError: unterminated f-string literal (detected at line 28)

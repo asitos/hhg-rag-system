@@ -34,7 +34,7 @@ if count == 0:
             "chunk_id": p["id"],
             "text": p["text"],
             "language": p["language"],
-            "strategy": "demo"
+            "strategy": "semantic"
         })
     store.add_vectors(vecs, payloads)
     print(f"Added {len(vecs)} vectors to Qdrant demo index.")

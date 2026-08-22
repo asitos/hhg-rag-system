@@ -1,5 +1,13 @@
 #!/bin/bash
 export APP_MODE=demo
 export PYTHONPATH=.
-echo "Starting HH Goa Voice RAG Video Demo..."
-.venv/bin/python gradio_app.py
+
+echo "=========================================="
+echo " Starting HH Goa Voice RAG Video Demo"
+echo "=========================================="
+echo "Mode: DEMO (Backend RAG + Mocks)"
+echo ""
+echo "Please open your browser to:"
+echo "http://localhost:8000"
+echo "=========================================="
+.venv/bin/python app.py

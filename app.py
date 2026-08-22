@@ -15,10 +15,42 @@ from src.config import settings
 
 from contextlib import asynccontextmanager
 
+
+from src.retrieval.embedder import Embedder
+import json
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print("Initializing Vector Store...")
+    vs = VectorStore(persist_dir="data/qdrant_db")
+    
+    if settings.app_mode in ["mock", "demo"]:
+        count = vs.client.count(vs.collection_name).count
+        if count == 0:
+            print("WARNING: Qdrant DB is empty. Building demo index now...")
+            embedder = Embedder(settings.embedding_model_id)
+            with open("tests/fixtures/passages.json", "r") as f:
+                passages = json.load(f)
+            vecs = []
+            payloads = []
+            for p in passages:
+                vecs.append(embedder.embed_query(p["text"]))
+                payloads.append({
+                    "chunk_id": p["id"],
+                    "text": p["text"],
+                    "language": p["language"],
+                    "strategy": "semantic"
+                })
+            vs.add_vectors(vecs, payloads)
+            print(f"Added {len(vecs)} vectors to Qdrant demo index.")
+
+    global pipeline
+    print("Loading RAG Models...")
+    pipeline = RAGPipeline(vs)
     yield
-    await rest_stt.close()
+    if hasattr(rest_stt, "close"):
+        await rest_stt.close()
+
 
 app = FastAPI(title="HH Goa 2026 Voice RAG API", lifespan=lifespan)
 
@@ -31,6 +63,19 @@ origins = [
 ]
 if settings.frontend_origin:
     origins.append(settings.frontend_origin)
+
+
+class ScenarioRequest(BaseModel):
+    scenario: str
+
+@app.post("/api/v1/scenario")
+async def set_scenario(req: ScenarioRequest):
+    settings.demo_scenario = req.scenario
+    return {"status": "ok", "scenario": settings.demo_scenario}
+
+@app.get("/api/v1/scenario")
+async def get_scenario():
+    return {"scenario": settings.demo_scenario}
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,14 +95,7 @@ else:
 
 from contextlib import asynccontextmanager
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: models are already initialized via constructors
-    yield
-    # Shutdown: clean up HTTP clients
-    await rest_stt.close()
 
-app.router.lifespan_context = lifespan
 
 class LatencyMetrics(BaseModel):
     stt_ms: float = 0.0

@@ -25,6 +25,18 @@
                 <div class="section-label">01 / Query input</div>
                 <h2>Send a signal</h2>
                 
+                
+            <div id="demo-scenario-container" class="hidden" style="margin-top: 16px; background: rgba(0,0,0,0.1); padding: 12px; border-radius: 4px; border: 1px dashed var(--ink);">
+                <label style="font: 500 11px 'DM Mono', monospace; text-transform: uppercase; margin-bottom: 4px; display: block;">Demo Scenario (Backend Simulation)</label>
+                <select id="demo-scenario-select" style="width: 100%; padding: 8px; background: var(--input-bg); color: var(--input-text); border: 1px solid var(--ink);">
+                    <option value="english">English RAG (Default)</option>
+                    <option value="hindi">Hindi RAG</option>
+                    <option value="off_topic">Off-Topic Guardrail</option>
+                    <option value="no_context">Grounding / No Context</option>
+                    <option value="grounding_failure">Grounding Failure (Bad Citation)</option>
+                </select>
+            </div>
+
                 <div class="tabs">
                     <button class="tab-btn active" data-tab="voice">VOICE</button>
                     <button class="tab-btn" data-tab="text">TEXT</button>

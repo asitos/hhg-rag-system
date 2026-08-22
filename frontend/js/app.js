@@ -44,6 +44,22 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
     document.querySelector('.output-deck').insertBefore(pipelineContainer, loadingState);
 
+    
+    const demoScenarioContainer = document.getElementById('demo-scenario-container');
+    const demoScenarioSelect = document.getElementById('demo-scenario-select');
+    
+    demoScenarioSelect.addEventListener('change', async (e) => {
+        try {
+            await fetch(`${API_BASE}/api/v1/scenario`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scenario: e.target.value })
+            });
+        } catch (err) {
+            console.error("Failed to set scenario", err);
+        }
+    });
+
     // Theme Toggle
     themeBtn.addEventListener('click', () => {
         const isDark = document.body.classList.toggle('dark');
@@ -74,8 +90,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await res.json();
                 outHealth.textContent = "Online";
                 outHealth.style.color = "var(--success)";
-                if (data.mode === "mock") {
+                if (data.mode === "mock" || data.mode === "demo") {
                     demoBanner.classList.remove("hidden");
+                    demoBanner.textContent = `MODE: ${data.mode.toUpperCase()} (Using local backend RAG with API mocks)`;
+                    demoScenarioContainer.classList.remove("hidden");
                 }
             } else {
                 throw new Error("Bad status");

@@ -52,6 +52,51 @@ def process_text(text):
     except Exception as e:
         return f"Error: {str(e)}", "", 0.0, 0.0
 
+
+from src.stt.sarvam_stream import get_session, cleanup_session
+
+async def handle_stream(session_id, audio_chunk):
+    if audio_chunk is None:
+        return session_id, ""
+    try:
+        session = await get_session(session_id)
+        await session.send_chunk(audio_chunk)
+        return session.session_id, session.latest_partial
+    except Exception as e:
+        import logging
+        logging.error(f"Stream error: {e}")
+        return session_id, ""
+
+async def finalize_stream(session_id):
+    if not session_id:
+        return "No session.", "", 0.0, 0.0
+        
+    try:
+        session = await get_session(session_id)
+        transcript, metrics = await session.finalize()
+        
+        # Run RAG
+        p_input = PipelineInput(query=transcript)
+        response = await pipeline.execute(p_input)
+        
+        await cleanup_session(session_id)
+        
+        sources = "\n".join([f"[{s.chunk_id}] {s.text}" for s in response.sources])
+        stt_latency = metrics.get("stt_final_ms", 0) / 1000
+        post_stt_ms = response.latency.get("post_stt_total_ms", 0)
+        total_lat = (post_stt_ms / 1000) + stt_latency
+        
+        # Combine metrics to show in UI
+        full_metrics = {**metrics, **response.latency, "full_pipeline_ms": total_lat * 1000}
+        metrics_str = "\n".join([f"{k}: {v:.2f} ms" if isinstance(v, float) else f"{k}: {v}" for k, v in full_metrics.items()])
+        
+        final_answer = f"Transcript: {transcript}\n\nAnswer: {response.answer}\n\n--- LATENCY METRICS ---\n{metrics_str}"
+        return final_answer, sources, total_lat, stt_latency
+    except Exception as e:
+        import logging
+        logging.error(f"Finalize error: {str(e)}", exc_info=True)
+        return f"Processing error: {str(e)[:100]}", "", 0.0, 0.0
+
 ui_css = """
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
@@ -204,7 +249,8 @@ with gr.Blocks(
                 gr.HTML('<div class="section-label">01 / Query input</div><h2>Send a signal</h2>')
                 with gr.Tabs(elem_classes=["tabs"]):
                     with gr.Tab("VOICE"):
-                        audio_in = gr.Audio(sources=["microphone"], type="filepath", label="Record query")
+                        session_id = gr.State("")
+                        audio_in = gr.Audio(sources=["microphone"], type="numpy", streaming=True, label="Record query")
                         btn_voice = gr.Button("Transmit voice", variant="primary")
                     with gr.Tab("TEXT"):
                         text_in = gr.Textbox(label="Type query", lines=5, placeholder="Ask about the corpus...")
@@ -221,7 +267,8 @@ with gr.Blocks(
             with gr.Column(elem_classes=["metric"]):
                 stt_out = gr.Number(label="STT latency (s)")
 
-    btn_voice.click(process_audio, inputs=[audio_in], outputs=[answer_out, sources_out, lat_out, stt_out])
+    audio_in.stream(handle_stream, inputs=[session_id, audio_in], outputs=[session_id, answer_out])
+    audio_in.stop_recording(finalize_stream, inputs=[session_id], outputs=[answer_out, sources_out, lat_out, stt_out])
     btn_text.click(process_text, inputs=[text_in], outputs=[answer_out, sources_out, lat_out, stt_out])
 
 if __name__ == "__main__":

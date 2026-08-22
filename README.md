@@ -102,15 +102,11 @@ Run the video-ready interactive demo (runs the real local RAG pipeline with mock
 ./scripts/run_demo.sh
 ```
 
-Then open the local Gradio URL (typically `http://localhost:7860`).
+Then open your browser to `http://localhost:8000`.
 
 Recommended demo flow:
-1. English voice query (or type a query)
-2. Show transcript
-3. Show retrieval
-4. Show reranking
-5. Show grounded answer
-6. Show sources
-7. Show latency
-8. Demonstrate Hindi query using the Demo Scenario dropdown
-9. Demonstrate off-topic guardrail using the Demo Scenario dropdown
+1. Select **English RAG (Default)** in the Scenario dropdown and ask: *"What is a corporation?"*
+2. Select **English RAG (Default)** in the Scenario dropdown and ask: *"How do mutual funds work?"*
+3. Select **Hindi RAG** in the Scenario dropdown and ask: *"भारत की राजधानी क्या है?" (What is the capital of India?)*
+4. Show transcript, retrieval, reranking, sources, and latency for the queries above.
+5. Select **Off-Topic Guardrail** in the dropdown and ask: *"What is the weather today?"* to demonstrate safety blocks.
